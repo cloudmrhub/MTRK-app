@@ -12,11 +12,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Download AWS Lambda Web Adapter (latest) and make it executable
-ARG LWA_VERSION=v0.9.1
-RUN sudo mkdir -p /opt/extensions && \
-    wget https://github.com/awslabs/aws-lambda-web-adapter/releases/tag/v0.9.1/downloads/aws-lambda-adapter 
-RUN sudo mv aws-lambda-adapter /opt/extensions/aws-lambda-adapter && \
-    sudo chmod +x /opt/extensions/aws-lambda-adapter
+
+COPY aws-lambda-adapter /opt/extensions/aws-lambda-adapter
+RUN chmod +x /opt/extensions/aws-lambda-adapter
 
 # Your app
 COPY . /var/task
