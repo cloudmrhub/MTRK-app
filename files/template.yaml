@@ -4,31 +4,24 @@ Description: Single-Lambda Flask backend (cloud_entry) behind API Gateway HTTP A
 
 Globals:
   Function:
-    Timeout: 120                 # adjust for your heaviest route
-    MemorySize: 2048             # more memory => more vCPU; bump if NumPy heavy
-    Architectures: [ x86_64 ]    # keep x86_64 unless you’ve built for arm64
+    Timeout: 120
+    MemorySize: 2048
+    Architectures: [ x86_64 ]
     EphemeralStorage:
-      Size: 10240                # /tmp size in MB (max 10240)
+      Size: 10240                 # /tmp size in MB (max 10240)
     Environment:
       Variables:
         ARTIFACT_BUCKET: !Ref ArtifactBucket
-    Policies:
-      - S3WritePolicy:
-          BucketName: !Ref ArtifactBucket
-      - S3ReadPolicy:
-          BucketName: !Ref ArtifactBucket
 
 Resources:
-  # HTTP API (proxy all routes to Lambda)
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       CorsConfiguration:
-        AllowOrigins: ['*']          # tighten for prod (e.g., your CF domain)
+        AllowOrigins: ['*']        # tighten for prod
         AllowHeaders: ['content-type','authorization']
         AllowMethods: ['GET','POST','PUT','DELETE','OPTIONS']
 
-  # Private artifact bucket for generated files (mtrk/seq, etc.)
   ArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -42,11 +35,20 @@ Resources:
         RestrictPublicBuckets: true
     DeletionPolicy: Retain
 
-  # Your app as a single Lambda container.
   AppFunction:
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
+      # Give the function S3 read/write on the artifact bucket
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref ArtifactBucket
+        - S3ReadPolicy:
+            BucketName: !Ref ArtifactBucket
+      # Publish a version + alias automatically so we can attach provisioned concurrency
+      AutoPublishAlias: live
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
       Events:
         Proxy:
           Type: HttpApi
@@ -55,19 +57,9 @@ Resources:
             Path: /{proxy+}
             Method: ANY
     Metadata:
-      Dockerfile: Dockerfile      # must build cloud_entry:app
-      DockerContext: .            # project root
+      Dockerfile: Dockerfile
+      DockerContext: .
       DockerTag: latest
-
-  # OPTIONAL: keep 1 warm instance for low latency (comment out if not needed)
-  AppFunctionAlias:
-    Type: AWS::Lambda::Alias
-    Properties:
-      FunctionName: !Ref AppFunction
-      FunctionVersion: !GetAtt AppFunction.Version
-      Name: live
-      ProvisionedConcurrencyConfig:
-        ProvisionedConcurrentExecutions: 1
 
 Outputs:
   ApiUrl:
